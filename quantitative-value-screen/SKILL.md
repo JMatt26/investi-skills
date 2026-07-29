@@ -112,6 +112,17 @@ are exactly where hand arithmetic drifts. Histories are **oldest
 first**; the F-Score needs three years of data (the reference explains
 why).
 
+Each criterion returns one of four states: `pass`, `fail`,
+`insufficient_data`, or `determinable_fail` (a fail reached from partial
+data, because the sourced values already violate the rule no matter what
+the missing inputs are — see `references/graham-defensive.md`). The key
+discipline: **if a criterion returns `insufficient_data`, do not override
+it with your own reasoning that it "obviously" fails.** The calculator
+already emits `determinable_fail` for every case where partial data
+settles the question; anything it left as `insufficient_data` is
+genuinely undetermined. Hand-reasoning a fail in prose next to the
+script's output is the exact drift this skill exists to prevent.
+
 ### 4. Assemble the report
 
 Copy `assets/output-template.md` and fill it in. Non-negotiable

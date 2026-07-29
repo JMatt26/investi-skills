@@ -100,3 +100,38 @@ acceptable — say which was used.
   information than a 10-year earnings gap on criterion 4.
 - **Any insufficient_data** — the verdict is incomplete. Never round an
   incomplete screen up to a pass.
+
+### Result states
+
+The calculator returns one of four states per criterion:
+
+- `pass` / `fail` — computed from complete data.
+- `insufficient_data` — a required input is missing and the outcome
+  genuinely cannot be determined. Report as incomplete; never round up
+  to a pass.
+- `determinable_fail` — some inputs are missing, but the inputs that
+  ARE present already violate the rule such that no value the missing
+  inputs could take would change the outcome. It counts as a fail for
+  the overall verdict, and the summary breaks it out under
+  `determinable_fails` with a `verdict_note`.
+
+Two criteria can produce `determinable_fail` from partial data:
+
+- **Criterion 4 (earnings stability)** requires positive EPS in *every*
+  one of the 10 years. A single non-positive year among the sourced
+  years fails it outright — the missing years cannot undo a documented
+  loss year. (If every sourced year is positive but fewer than 10 are
+  present, the state is `insufficient_data`, not a fail — a missing year
+  could still be negative.)
+- **Criterion 7 (moderate valuation)** uses only the 3 most recent years
+  of EPS. When those are present, the 3-year-average P/E is exactly
+  computable; because both conditions are ceilings, a value already
+  above them fails regardless of the missing earlier years. (A pass on
+  the trailing-3-year test is likewise real, since this criterion never
+  uses more than 3 years.)
+
+This exists so that verdicts reachable from partial data are decided
+*inside the calculator*, not hand-reasoned in prose alongside the
+script's output. If a criterion returns `insufficient_data`, do not
+override it with your own judgment that it "obviously" fails — if it
+were determinable, the calculator would have said so.

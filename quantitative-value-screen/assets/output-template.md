@@ -25,6 +25,10 @@
 | 7 | Valuation (P/E, P/E x P/B) | | <= 15 and <= 22.5 | |
 
 **Verdict:** {pass / fail on criterion N / incomplete — N criteria lack data}
+<!-- A criterion may read "determinable_fail": it failed on partial data
+because the sourced values already violate the rule regardless of the
+missing inputs. Report it as a fail and say so plainly; do not present it
+as merely "incomplete." -->>
 
 ### Graham NCAV
 

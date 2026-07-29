@@ -43,6 +43,12 @@ import json
 import sys
 
 MISSING = "insufficient_data"
+# A criterion whose required inputs are incomplete, but where the inputs
+# that ARE present already violate the rule such that no value the missing
+# inputs could take would change the outcome. Treated as a fail for the
+# screen verdict, but tagged distinctly so the report can explain that the
+# fail was reached from partial data.
+DETERMINABLE_FAIL = "determinable_fail"
 
 
 # ---------------------------------------------------------------------------
@@ -67,10 +73,24 @@ def _num(d, key):
 
 
 def _criterion(name, passed, value=None, threshold=None, note=None):
-    """Build a criterion result dict. passed may be True/False/MISSING."""
+    """Build a criterion result dict.
+
+    `passed` may be:
+      - True / False        -> "pass" / "fail"
+      - an explicit state string (MISSING, DETERMINABLE_FAIL) -> used as-is
+      - anything else        -> MISSING
+    """
+    if passed is True:
+        state = "pass"
+    elif passed is False:
+        state = "fail"
+    elif passed in (MISSING, DETERMINABLE_FAIL):
+        state = passed
+    else:
+        state = MISSING
     result = {
         "criterion": name,
-        "result": "pass" if passed is True else ("fail" if passed is False else MISSING),
+        "result": state,
     }
     if value is not None:
         result["value"] = value
@@ -144,13 +164,37 @@ def graham_defensive(company, options):
             threshold="long_term_debt <= net_current_assets"))
 
     # 4. Positive EPS every year for 10 years
+    # This rule must hold for EVERY year, so a single non-positive year in
+    # the data we DO have already fails it — no value for the missing years
+    # can undo a documented negative year. Hence determinable_fail on partial
+    # data, insufficient_data only when the sourced years are all positive.
     eps = _get(company, "eps_history")
-    if not isinstance(eps, list) or len(eps) < 10:
+    eps10 = None
+    eps_sourced = [float(x) for x in eps] if isinstance(eps, list) else []
+    if not isinstance(eps, list) or len(eps) == 0:
         criteria.append(_criterion(
             "earnings_stability", MISSING,
             note="'eps_history' must contain at least 10 annual values, "
                  "oldest first"))
-        eps10 = None
+    elif len(eps) < 10:
+        sourced = [float(x) for x in eps]
+        neg = sum(1 for x in sourced if x <= 0)
+        if neg > 0:
+            criteria.append(_criterion(
+                "earnings_stability", DETERMINABLE_FAIL,
+                value={"years_sourced": len(sourced),
+                       "negative_years_sourced": neg},
+                threshold="EPS > 0 in each of the last 10 years",
+                note=f"Only {len(sourced)} of 10 years provided, but "
+                     f"{neg} of them are non-positive; the rule requires "
+                     "zero negative years, so the missing years cannot "
+                     "change the outcome."))
+        else:
+            criteria.append(_criterion(
+                "earnings_stability", MISSING,
+                note=f"Only {len(sourced)} of 10 years provided (all "
+                     "positive so far); need the full 10-year 'eps_history', "
+                     "oldest first, to confirm a pass."))
     else:
         eps10 = [float(x) for x in eps[-10:]]
         criteria.append(_criterion(
@@ -209,44 +253,80 @@ def graham_defensive(company, options):
         shares = _num(company, "shares_outstanding")
         if equity is not None and shares:
             bvps = equity / shares
-    if price is None or eps10 is None or bvps is None or bvps <= 0:
+    # This test uses only the trailing 3 years of EPS, so it can often be
+    # decided from partial data: if the full 10-year series is missing but
+    # the 3 most recent years are present, the 3-year average P/E is exactly
+    # computable. Because both conditions are ceilings ("<= 15", "<= 22.5"),
+    # a value already above them is a fail no matter what the missing early
+    # years contain -> determinable_fail rather than insufficient_data.
+    have_full = eps10 is not None
+    have_trailing3 = len(eps_sourced) >= 3
+    if price is None or bvps is None or bvps <= 0 or not (have_full or have_trailing3):
         criteria.append(_criterion(
             "moderate_valuation", MISSING,
-            note="requires 'price', 10-year 'eps_history', and "
-                 "'book_value_per_share' (or 'total_equity' + "
-                 "'shares_outstanding'); book value must be positive"))
+            note="requires 'price', at least the 3 most recent years of "
+                 "'eps_history', and 'book_value_per_share' (or "
+                 "'total_equity' + 'shares_outstanding'); book value must "
+                 "be positive"))
     else:
-        avg_eps_3 = sum(eps10[-3:]) / 3.0
+        avg_eps_3 = sum(eps_sourced[-3:]) / 3.0
         if avg_eps_3 <= 0:
+            state = False if have_full else DETERMINABLE_FAIL
             criteria.append(_criterion(
-                "moderate_valuation", False,
+                "moderate_valuation", state,
                 value={"avg_eps_3yr": _round(avg_eps_3)},
                 note="3-year average EPS not positive; P/E undefined, "
-                     "treated as fail"))
+                     "treated as fail" + ("" if have_full else
+                     " (decided from the 3 most recent sourced years; the "
+                     "missing earlier years do not affect this test)")))
         else:
             pe = price / avg_eps_3
             pb = price / bvps
             product = pe * pb
             passed = pe <= 15.0 and product <= 22.5
+            if passed and not have_full:
+                # A pass on the trailing-3-year test is real (this criterion
+                # only ever uses those 3 years), so the missing early years
+                # do not matter here either. Report it as a pass.
+                state = True
+            elif passed:
+                state = True
+            else:
+                state = False if have_full else DETERMINABLE_FAIL
+            note = "P/E uses the 3 most recent fiscal years" + (
+                "" if have_full else
+                "; full 10-year 'eps_history' not needed for this test")
             criteria.append(_criterion(
-                "moderate_valuation", passed,
+                "moderate_valuation", state,
                 value={"pe_on_3yr_avg_eps": _round(pe, 2),
                        "pb": _round(pb, 2),
                        "pe_times_pb": _round(product, 2)},
-                threshold="P/E <= 15 AND P/E x P/B <= 22.5"))
+                threshold="P/E <= 15 AND P/E x P/B <= 22.5",
+                note=note))
 
     passed_n = sum(1 for c in criteria if c["result"] == "pass")
-    failed_n = sum(1 for c in criteria if c["result"] == "fail")
+    # determinable_fail counts as a fail for the verdict; it is broken out
+    # separately so the report can show the fail came from partial data.
+    hard_fail_n = sum(1 for c in criteria if c["result"] == "fail")
+    det_fail_n = sum(1 for c in criteria if c["result"] == DETERMINABLE_FAIL)
+    failed_n = hard_fail_n + det_fail_n
     missing_n = sum(1 for c in criteria if c["result"] == MISSING)
+    summary = {
+        "passed": passed_n, "failed": failed_n,
+        "insufficient_data": missing_n, "total": len(criteria),
+        "verdict": ("pass" if passed_n == len(criteria)
+                    else ("fail" if failed_n > 0 else "incomplete")),
+    }
+    if det_fail_n:
+        summary["determinable_fails"] = det_fail_n
+        summary["verdict_note"] = (
+            f"{det_fail_n} criterion/criteria failed on partial data "
+            "(determinable_fail): the sourced values already violate the "
+            "rule regardless of the missing inputs.")
     return {
         "screen": "graham_defensive",
         "criteria": criteria,
-        "summary": {
-            "passed": passed_n, "failed": failed_n,
-            "insufficient_data": missing_n, "total": len(criteria),
-            "verdict": ("pass" if passed_n == len(criteria)
-                        else ("fail" if failed_n > 0 else "incomplete")),
-        },
+        "summary": summary,
     }
 
 
