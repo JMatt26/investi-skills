@@ -46,6 +46,10 @@ this journal.
 
 - **Reviewing or grading past entries** against outcomes -> `belief-retrospective`.
 - **Seeing the current, editable status** of an active thesis -> `thesis-tracker`.
+- **Finding out what's already been logged** on a subject before writing a
+  new entry, or filing the finished entry once it's written -> hand off to
+  `research-workspace`, which owns storage location and lookup for every
+  skill in this suite.
 - **Decomposing a theme into candidates** before a thesis exists ->
   `thematic-mapping`.
 - **Stress-testing a thesis for holes** before it's ready to log ->
@@ -185,23 +189,34 @@ the transcript, the price, the conversation that prompted this. This is what
 later lets a retrospective separate "the user missed available information"
 from "that information didn't exist yet."
 
-Then check for a prior entry on the same topic; if one exists, set
-`supersedes` to its id and leave that file untouched. Copy
-`assets/belief-template.md`, assign an id (`YYYY-MM-DD-<slug>`), write to
-`beliefs/`, and confirm back: the recommendation line, the conviction tier,
-and the check-by date. If anything was logged as unspecified or `n/a`, say so
-plainly rather than letting the confirmation imply a cleaner entry than what
-was captured.
+Then check for a prior entry on the same subject (use `research-workspace`'s
+`index_manager.py lookup <subject>` — don't rely on memory); if one exists,
+set `supersedes` to its id and leave that file untouched. Copy
+`assets/output-template.md`, assign an id (`YYYY-MM-DD-<slug>`), and add the
+frontmatter `research-workspace` requires (`artifact_type: belief`,
+`skill: belief-journal`, `subject`, `is_ticker`) on top of this skill's own
+fields below. Hand off to `research-workspace` for the canonical path and to
+write and index the file, then confirm back: the recommendation line, the
+conviction tier, and the check-by date. If anything was logged as
+unspecified or `n/a`, say so plainly rather than letting the confirmation
+imply a cleaner entry than what was captured.
 
 ## Output schema
 
 ### Frontmatter
 
+Fields required by `research-workspace` (see its `references/folder-schema.md`)
+go first; this skill's own fields follow.
+
 | Field | Description |
 |---|---|
-| `id` | `YYYY-MM-DD-<slug>`, unique |
-| `date_logged` | Date written — never changes |
-| `topic` | Short subject line (ticker, theme, decision) |
+| `artifact_type` | Always `belief` |
+| `skill` | Always `belief-journal` |
+| `subject` | Ticker (`SOFI`) or non-ticker topic slug (`hiring-vp-eng`) — this is the folder key |
+| `is_ticker` | `true` if `subject` is a tradeable ticker, else `false` |
+| `id` | `YYYY-MM-DD-<slug>`, unique across the whole workspace |
+| `date` | Date written — never changes |
+| `topic` | Human-readable subject line, e.g. "SoFi — fintech unbundling backlog thesis" |
 | `direction` | `long` / `short` / `hold` / `n/a` |
 | `entry_price` | Price or level at which the view is taken, if applicable |
 | `conviction` | `low` / `medium` / `high` / `very high` |
@@ -323,6 +338,10 @@ sections 3, 6, and 9.
 
 ## Limitations
 
+- This skill does not manage where entries are stored or how they're found
+  again — that's `research-workspace`'s job. This skill produces the entry
+  and its frontmatter; `research-workspace` decides the path, writes the
+  file, and answers lookups.
 - This skill does not evaluate whether the belief is *correct* — only that
   it's captured cleanly enough to be checked later.
 - The memo skeleton is borrowed for its clarity-forcing properties, not its

@@ -58,6 +58,9 @@ interpretation caveats the final report must carry.
   Graham Defensive, NCAV, or Magic Formula — these screens' formulas
   don't map onto those capital structures. Piotroski is the least
   distorted, but flag the caveat. See per-screen references.
+- **Finding out what's already been screened** on a ticker, or filing the
+  finished report -> hand off to `research-workspace`, which owns storage
+  and lookup for every skill in this suite.
 
 ## Workflow
 
@@ -142,7 +145,36 @@ elements:
   Only the applicable ones — a caveat section that fires on everything
   informs on nothing.
 
-### 5. Flag hand-offs
+### 5. File the report
+
+Hand off to `research-workspace` to get the canonical path and write and
+index the file:
+
+```
+python3 scripts/index_manager.py path --skill quantitative-value-screen \
+  --subject <TICKER> --date <YYYY-MM-DD> --slug <screen-slug> --root research
+```
+
+For a single-company screen (Graham Defensive, Graham NCAV, Piotroski), the
+subject is the ticker screened. For a Magic Formula run, which ranks a peer
+set rather than judging one company, use a descriptive slug for the
+universe itself as the subject (e.g. `software-peer-set-2026-08`) with
+`is_ticker: false`, and list the ranked tickers in the report body — don't
+try to file one relative ranking under each member ticker separately.
+
+Add this frontmatter before handing off:
+
+| Field | Value |
+|---|---|
+| `artifact_type` | Always `screen` |
+| `skill` | Always `quantitative-value-screen` |
+| `id` | `YYYY-MM-DD-<subject>-<screen-slug>` |
+| `date` | Date-as-of used for the screen |
+| `subject` | Ticker screened, or universe slug for Magic Formula |
+| `is_ticker` | `true` for a single company, `false` for a Magic Formula universe |
+| `status` | `pass` / `fail` / `incomplete` |
+
+### 6. Flag hand-offs
 
 - **Pass / strong score** -> `moat-assessment` (is the business durable?)
   then `intrinsic-value-estimate` (what is it worth?). A screen pass is
@@ -181,6 +213,8 @@ passes."
 
 ## Limitations
 
+- This skill does not manage where reports are stored or how they're found
+  again — that's `research-workspace`'s job, run at filing time.
 - **Thresholds are era-calibrated.** Graham's numbers assume 1970s U.S.
   accounting and market structure. The size threshold is
   inflation-adjusted by default, but the deeper issue — e.g. asset-light

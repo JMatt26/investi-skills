@@ -42,6 +42,9 @@ names that warrant a full report).
 - The user already knows exactly which company they want to research — don't
   force a thematic decomposition onto a request that's really a single-name
   question in disguise.
+- **Finding out whether a candidate is already covered elsewhere**, or
+  filing the finished map -> hand off to `research-workspace`, which owns
+  storage and cross-theme overlap detection for every skill in this suite.
 
 ## Workflow
 
@@ -141,6 +144,34 @@ For each watchlist entry, note which downstream skill it should go to next:
 - Any name with a near-term dated event (earnings, product launch,
   regulatory decision) that could confirm/break the chain -> `catalyst-calendar`
 
+### 7. File the map
+
+The theme map is theme-centric, not company-centric — it spans every
+subject on the watchlist, so it gets one master file rather than a copy per
+company. Hand off to `research-workspace` to get the canonical path and
+write and index the file:
+
+```
+python3 scripts/index_manager.py path --skill thematic-mapping \
+  --theme <theme-slug> --date <YYYY-MM-DD> --slug map --root research
+```
+
+Add this frontmatter to the top of the assembled output before handing off:
+
+| Field | Value |
+|---|---|
+| `artifact_type` | Always `theme_map` |
+| `skill` | Always `thematic-mapping` |
+| `id` | `YYYY-MM-DD-<theme-slug>` |
+| `date` | Date the map was produced |
+| `theme` | The theme slug |
+| `subjects` | Every ticker (or descriptive-category placeholder) on the watchlist |
+
+`research-workspace` will flag, at filing time, whether any watchlist
+subject already has other artifacts on record or sits on another theme's
+watchlist — surface that overlap to the user rather than treating each
+theme map as if it starts from a blank slate.
+
 ## Output schema
 
 ### Thematic map entry (one per layer)
@@ -195,6 +226,9 @@ place with a stated dependency logic, not just thematic vibes.
 
 ## Limitations
 
+- This skill does not manage where the map is stored or whether its
+  subjects overlap with other themes' watchlists — that's
+  `research-workspace`'s job, run at filing time.
 - This skill produces a *hypothesis*, not a validated thesis — every
   watchlist entry should go through `thesis-validation` or
   `initiating-coverage` before sizing a real position.

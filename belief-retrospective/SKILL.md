@@ -51,6 +51,9 @@ the gap between them visible over a run of entries.
 - The user wants a performance report — returns, attribution, position
   sizing. This skill grades *beliefs*, not a portfolio, and the two diverge
   wherever sizing and timing did work the thesis didn't.
+- **Locating entries or filing the finished report** — hand off to
+  `research-workspace`, which owns storage and lookup for every skill in
+  this suite.
 
 ## What this skill may and may not write
 
@@ -61,11 +64,21 @@ Load-bearing, and the reason the journal is trustworthy at all:
   record is that it cannot be improved after the fact.
 - **May append** a `## Checkpoint — YYYY-MM-DD` section to the bottom of an
   entry file, using `assets/checkpoint-template.md`. Multiple checkpoints
-  accumulate; a later one never rewrites an earlier one.
+  accumulate; a later one never rewrites an earlier one. Locate the entry's
+  exact file via `research-workspace`'s `index_manager.py lookup <subject>`
+  — don't assume a path. `belief-journal` files by subject and skill name,
+  not by a flat guessable location.
 - **May update exactly one frontmatter field:** `status`. This is the single
-  mutation `belief-journal` delegates here.
-- **Writes the report** to `retrospectives/YYYY-MM-DD-<scope>.md` from
-  `assets/retrospective-template.md`. The report is derived and disposable —
+  mutation `belief-journal` delegates here. Once every checkpoint in a run
+  is written, run `index_manager.py rebuild` so the index reflects the new
+  statuses — the index is always derived from what's on disk, never trusted
+  as accumulated state, so a status change that isn't followed by a rebuild
+  is invisible to every other skill's lookups until the next one happens.
+- **Writes the report** through `research-workspace`. Get the canonical path
+  with `index_manager.py path`, add the required frontmatter
+  (`artifact_type: retrospective`, `skill: belief-retrospective`, plus
+  `subject`/`is_ticker` or a scope-descriptive slug — see step 7), then hand
+  off to write and index it. The report is derived and disposable —
   regenerating it must never require touching an entry.
 
 ## Workflow
@@ -76,6 +89,22 @@ Ask what scope to review if it isn't clear: one topic and its chain, one
 tag, a date range, everything due (`check_by` in the past, `status: open`),
 or the whole journal. State the resolved scope back before starting — a
 retrospective over an unstated set produces a scorecard nobody can reproduce.
+
+Locate the entries in scope through `research-workspace` rather than
+guessing paths. A single-topic scope is a direct lookup:
+
+```
+python3 scripts/index_manager.py lookup <subject> --root research
+```
+
+Broader scopes (a tag, a date range, "everything due," the whole journal)
+cut across subjects, and the index doesn't filter on those fields — it
+only knows subject, theme, skill, date, and status. For those, run
+`index_manager.py list --root research` to enumerate every subject, then
+open each subject's `belief-journal` artifacts to check the field the scope
+actually filters on (`tags`, `date`, `check_by`). This is slower than
+a direct lookup but still starts from the index rather than an unbounded
+filesystem search.
 
 Read every entry in scope in full. Section 3's numbered legs, section 6's
 mitigants, and section 9's falsification criteria are the grading inputs;
@@ -168,10 +197,41 @@ the specific ways these numbers mislead.
 
 ### 7. Assemble the report, then append checkpoints
 
-Write the report from `assets/retrospective-template.md`, then append a
-checkpoint to each graded entry from `assets/checkpoint-template.md` and
-update its `status`. Report first, writes second: the writes are irreversible
-in spirit even where they're technically reversible on disk.
+Assemble the report from `assets/retrospective-template.md`. Get its
+canonical path from `research-workspace` before writing:
+
+```
+python3 scripts/index_manager.py path --skill belief-retrospective \
+  --subject <subject> --date <YYYY-MM-DD> --slug retrospective --root research
+```
+
+A single-topic scope files under that topic's subject, same as any other
+subject-centric artifact. A scope that spans multiple subjects (a tag
+sweep, a date range, the whole journal) doesn't belong to any one of
+them — file it the same way `quantitative-value-screen` files a Magic
+Formula ranking: under a descriptive slug for the scope itself (e.g.
+`fintech-unbundling-tag-sweep-2026-08`), with `is_ticker: false`, and list
+the individual subjects covered in the report body rather than duplicating
+the file across each one.
+
+Add this frontmatter before writing:
+
+| Field | Value |
+|---|---|
+| `artifact_type` | Always `retrospective` |
+| `skill` | Always `belief-retrospective` |
+| `id` | `YYYY-MM-DD-<subject-or-scope-slug>` |
+| `date` | Date the retrospective was generated |
+| `subject` | The topic reviewed, or a scope slug for a multi-subject sweep |
+| `is_ticker` | `true` for a single-ticker topic, `false` otherwise |
+
+Then append a checkpoint to each graded entry from
+`assets/checkpoint-template.md` and update its `status`, locating each
+entry's file via `index_manager.py lookup` as described above. Report
+first, writes second: the writes are irreversible in spirit even where
+they're technically reversible on disk. Once every checkpoint is written,
+run `index_manager.py rebuild` so the index picks up the new statuses and
+the newly filed report.
 
 Confirm back the scope reviewed, the count graded by outcome, and any entry
 left `pending` with the missing fact named.
@@ -247,6 +307,9 @@ the finding.
 
 ## Limitations
 
+- This skill does not manage where entries or reports live or how they're
+  found — that's `research-workspace`'s job. This skill only reads entries
+  it's pointed at and appends checkpoints to them.
 - A retrospective can only be as good as the entries. Vague theses and
   `unspecified` falsification criteria produce `inconclusive` grades, and no
   amount of care at review time recovers what wasn't written at entry time.
